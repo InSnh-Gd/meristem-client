@@ -1,0 +1,3 @@
+[submodule "meristem-shared"]
+	path = meristem-shared
+	url = https://github.com/InSnh-Gd/meristem-shared.git
