@@ -96,7 +96,7 @@ export class PulseService {
       },
     };
 
-    await nc.publish('meristem.v1.sys.pulse', new TextEncoder().encode(JSON.stringify(message)));
+    nc.publish('meristem.v1.sys.pulse', new TextEncoder().encode(JSON.stringify(message)));
     logger.debug('Pulse sent', { node_id, cpu_load: message.core.cpu_load });
   }
 }

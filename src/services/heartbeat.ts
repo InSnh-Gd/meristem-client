@@ -80,7 +80,7 @@ export class HeartbeatService {
       claimed_ip: process.env.MERISTEM_CLAIMED_IP || '',
     };
 
-    await nc.publish('meristem.v1.hb.' + node_id, new TextEncoder().encode(JSON.stringify(message)));
+    nc.publish('meristem.v1.hb.' + node_id, new TextEncoder().encode(JSON.stringify(message)));
     logger.debug('Heartbeat sent', { node_id, ts });
   }
 }
