@@ -117,7 +117,7 @@ function getMachineFingerprint(): string {
   const interfaces = networkInterfaces();
   const macs: string[] = [];
   
-  for (const [name, addrs] of Object.entries(interfaces)) {
+  for (const [, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
     for (const addr of addrs) {
       // Skip internal and non-physical interfaces
@@ -154,7 +154,7 @@ function getPrimaryMac(): string {
   }
   
   // Fallback: first available non-internal MAC
-  for (const [name, addrs] of Object.entries(interfaces)) {
+  for (const [, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
     for (const addr of addrs) {
       if (!addr.internal && addr.mac && addr.mac !== '00:00:00:00:00:00') {
