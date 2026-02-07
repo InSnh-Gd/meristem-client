@@ -13,6 +13,7 @@ import {
   getHostname,
   detectPersona,
   collectHardwareProfile,
+  createHardwareProfileHash,
   loadCredentials,
   saveCredentials,
   isRegistered,
@@ -33,7 +34,7 @@ interface JoinResult {
   success: boolean;
   nodeId?: string;
   coreIp?: string;
-  status?: 'new' | 'existing';
+  status?: 'new' | 'existing' | 'pending_approval';
   message?: string;
   error?: string;
 }
@@ -112,11 +113,13 @@ async function performJoin(): Promise<JoinResult> {
     console.log(`[Join] HWID: ${hwid.substring(0, 16)}...`);
 
     // Prepare join request
+    const hardwareProfile = collectHardwareProfile();
     const joinRequest = {
       hwid,
       hostname: getHostname(),
       persona: detectPersona(),
-      hardwareProfile: collectHardwareProfile(),
+      hardware_profile: hardwareProfile,
+      hardware_profile_hash: createHardwareProfileHash(hardwareProfile),
     };
 
     console.log(`[Join] Connecting to Core at ${CORE_URL}...`);

@@ -40,7 +40,8 @@ export interface JoinRequest {
   hwid: string;
   hostname: string;
   persona: 'AGENT' | 'GIG';
-  hardwareProfile?: HardwareProfile;
+  hardware_profile?: HardwareProfile;
+  hardware_profile_hash?: string;
 }
 
 /**
@@ -69,7 +70,7 @@ export interface HardwareProfile {
     memory?: number;
   }>;
   os?: string;
-  arch?: 'x86_64' | 'arm64';
+  arch?: 'x86_64' | 'arm64' | 'unknown';
 }
 
 /**
@@ -80,7 +81,7 @@ export interface JoinResponse {
   data?: {
     node_id: string;
     core_ip: string;
-    status: 'new' | 'existing';
+    status: 'new' | 'existing' | 'pending_approval';
     message: string;
   };
   error?: string;
@@ -272,11 +273,21 @@ export function detectPersona(): 'AGENT' | 'GIG' {
  * Full implementation would read /proc/cpuinfo, /proc/meminfo, etc.
  */
 export function collectHardwareProfile(): HardwareProfile {
+  const resolveArch = (): HardwareProfile['arch'] => {
+    if (process.arch === 'x64') {
+      return 'x86_64';
+    }
+
+    if (process.arch === 'arm64') {
+      return 'arm64';
+    }
+
+    return 'unknown';
+  };
+
   const profile: HardwareProfile = {
     os: process.platform,
-    arch: process.arch === 'x64' ? 'x86_64' : 
-          process.arch === 'arm64' ? 'arm64' : 
-          process.arch as any,
+    arch: resolveArch(),
   };
   
   // CPU info would be parsed from /proc/cpuinfo on Linux
@@ -285,6 +296,40 @@ export function collectHardwareProfile(): HardwareProfile {
   
   return profile;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const canonicalizeProfileValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeProfileValue(item));
+  }
+
+  if (isRecord(value)) {
+    const next: Record<string, unknown> = {};
+    const keys = Object.keys(value).sort();
+    for (const key of keys) {
+      const candidate = value[key];
+      if (candidate !== undefined) {
+        next[key] = canonicalizeProfileValue(candidate);
+      }
+    }
+    return next;
+  }
+
+  return value;
+};
+
+/**
+ * 生成硬件画像哈希，保证不同平台序列化顺序一致。
+ */
+export const createHardwareProfileHash = (profile: HardwareProfile): string => {
+  const canonical = canonicalizeProfileValue(profile);
+  return createHash('sha256')
+    .update(JSON.stringify(canonical))
+    .digest('hex')
+    .toLowerCase();
+};
 
 /**
  * Clear persisted credentials (for re-join scenarios)
