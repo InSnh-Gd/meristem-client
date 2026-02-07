@@ -24,4 +24,8 @@ export interface ClientConfig {
         level: 'debug' | 'info' | 'warn' | 'error';
         format: 'json' | 'pretty';
     };
+    gig: {
+        max_retries: number;
+        retry_backoff_ms: number[];
+    };
 }

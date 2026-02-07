@@ -5,7 +5,34 @@ import { createClientLogger, type Logger } from '../utils/logger.js';
 
 const DEFAULT_PENDING_DIR = process.env.MERISTEM_PATHS_PENDING_DIR || '/var/lib/meristem/pending';
 const DEFAULT_STAGING_DIR = process.env.MERISTEM_PATHS_STAGING_DIR || join(dirname(DEFAULT_PENDING_DIR), 'staging');
-const DEFAULT_RETRY_DELAYS_MS = [10000, 30000, 90000, 270000, 810000];
+const DEFAULT_RETRY_DELAYS_MS = [1000, 5000, 15000];
+
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return fallback;
+};
+
+const parseRetryBackoffFromEnv = (): number[] => {
+  const value = process.env.MERISTEM_GIG_RETRY_BACKOFF_MS;
+  if (!value) {
+    return DEFAULT_RETRY_DELAYS_MS;
+  }
+
+  const parsed = value
+    .split(',')
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+
+  return parsed.length > 0 ? parsed : DEFAULT_RETRY_DELAYS_MS;
+};
 
 export interface ResultRecord {
   task_id: string;
@@ -41,8 +68,8 @@ export class ResultInbox {
   constructor(options: ResultInboxOptions) {
     this.pendingDir = options.pendingDir || DEFAULT_PENDING_DIR;
     this.stagingDir = options.stagingDir || DEFAULT_STAGING_DIR;
-    this.maxRetries = options.maxRetries ?? 5;
-    this.retryDelaysMs = options.retryDelaysMs?.length ? options.retryDelaysMs : DEFAULT_RETRY_DELAYS_MS;
+    this.maxRetries = options.maxRetries ?? parsePositiveInt(process.env.MERISTEM_GIG_MAX_RETRIES, 3);
+    this.retryDelaysMs = options.retryDelaysMs?.length ? options.retryDelaysMs : parseRetryBackoffFromEnv();
     this.sendResult = options.sendResult;
     this.onOrphaned = options.onOrphaned;
     const isJoined = options.isJoined ?? false;

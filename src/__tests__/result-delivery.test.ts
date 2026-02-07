@@ -64,4 +64,37 @@ describe('createResultDelivery', () => {
 
     await expect(access(join(pendingDir, 'task-ack'))).rejects.toThrow();
   });
+
+  it('超过重试上限后应标记为 orphaned', async () => {
+    const root = await createTempRoot();
+    const pendingDir = join(root, 'pending');
+    const stagingDir = join(root, 'staging');
+    const orphaned: string[] = [];
+
+    const delivery = createResultDelivery({
+      pendingDir,
+      stagingDir,
+      retryDelaysMs: [5],
+      maxRetries: 1,
+      sendResult: async () => {
+        throw new Error('network down');
+      },
+      onOrphaned: (taskId) => {
+        orphaned.push(taskId);
+      },
+    });
+
+    await delivery.start();
+    await delivery.deliver({
+      task_id: 'task-orphaned',
+      status: 'failed',
+      error: 'boom',
+    });
+
+    await Bun.sleep(30);
+    await delivery.stop();
+
+    expect(orphaned).toEqual(['task-orphaned']);
+    await expect(access(join(pendingDir, 'task-orphaned', 'orphaned'))).resolves.toBeNull();
+  });
 });
