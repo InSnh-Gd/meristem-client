@@ -1,6 +1,6 @@
 import pino from 'pino';
 import type { NatsConnection } from 'nats';
-import type { LogEnvelope, LogLevel } from 'meristem-shared';
+import type { LogEnvelope, LogLevel } from '@insnh-gd/meristem-shared';
 
 type TraceContextFields = {
   traceId: string;
