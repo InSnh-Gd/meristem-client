@@ -292,7 +292,7 @@ export function collectHardwareProfile(): HardwareProfile {
   
   // CPU info would be parsed from /proc/cpuinfo on Linux
   // Memory info from /proc/meminfo
-  // For MVP, we provide basic Node.js available info
+  // For MVP, we provide basic runtime-available info
   
   return profile;
 }

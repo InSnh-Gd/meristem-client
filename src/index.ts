@@ -22,6 +22,10 @@ import {
 } from './services/identity.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
+import packageJson from '../package.json';
+
+const CLIENT_VERSION =
+  typeof packageJson.version === 'string' ? packageJson.version : '0.1.0';
 
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
@@ -183,7 +187,7 @@ async function performJoin(): Promise<JoinResult> {
  */
 async function main(): Promise<void> {
   console.log('=== Meristem Client ===');
-  console.log(`Version: ${process.env.npm_package_version || '0.1.0'}`);
+  console.log(`Version: ${CLIENT_VERSION}`);
   console.log('');
 
   let logger: Logger | null = null;
