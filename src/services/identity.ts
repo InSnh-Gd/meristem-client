@@ -13,6 +13,8 @@ import { readFileSync } from 'fs';
 import { networkInterfaces, hostname } from 'os';
 import { writeFile, readFile, access } from 'fs/promises';
 import { join } from 'path';
+import type { NodePersona } from '@insnh-gd/meristem-shared';
+import { resolveNodePersona } from '../utils/persona.js';
 
 // Path for persisting node credentials
 const CREDENTIALS_PATH = process.env.MERISTEM_CREDENTIALS_PATH || 
@@ -39,7 +41,7 @@ export interface NodeCredentials {
 export interface JoinRequest {
   hwid: string;
   hostname: string;
-  persona: 'AGENT' | 'GIG';
+  persona: NodePersona;
   hardware_profile?: HardwareProfile;
   hardware_profile_hash?: string;
 }
@@ -254,18 +256,11 @@ export function getHostname(): string {
 }
 
 /**
- * Detect system persona based on environment
-  * Can be overridden via MERISTEM_IDENTITY_PERSONA env var
-  */
-export function detectPersona(): 'AGENT' | 'GIG' {
-  const envPersona = process.env.MERISTEM_IDENTITY_PERSONA;
-  if (envPersona === 'AGENT' || envPersona === 'GIG') {
-    return envPersona;
-  }
-
-  // Default to GIG for compute nodes
-  // AGENT is typically for storage/relay nodes
-  return 'GIG';
+ * Detect node persona from runtime environment.
+ * Priority: MERISTEM_IDENTITY_PERSONA > default.
+ */
+export function detectPersona(): NodePersona {
+  return resolveNodePersona(process.env.MERISTEM_IDENTITY_PERSONA);
 }
 
 /**

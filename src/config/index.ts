@@ -1,6 +1,7 @@
 import { parse } from '@iarna/toml';
 import { readFileSync, existsSync } from 'fs';
 import { ClientConfig } from './schema.js';
+import { resolveNodePersona } from '../utils/persona.js';
 
 const CONFIG_PATHS = [
     './config.toml',
@@ -97,13 +98,15 @@ export function loadConfig(): ClientConfig {
     }
 
     const defaultRetryBackoff = [1000, 5000, 15000];
+    const personaCandidate: unknown =
+        process.env.MERISTEM_IDENTITY_PERSONA ?? fileConfig.identity?.persona;
     const config: ClientConfig = {
         core: {
             address: process.env.MERISTEM_CORE_ADDRESS ?? process.env.MERISTEM_CORE_URL ?? fileConfig.core?.address ?? '',
         },
         identity: {
             auth_key: process.env.MERISTEM_IDENTITY_AUTH_KEY ?? fileConfig.identity?.auth_key,
-            persona: (process.env.MERISTEM_IDENTITY_PERSONA ?? fileConfig.identity?.persona ?? 'AGENT') as 'AGENT' | 'GIG',
+            persona: resolveNodePersona(personaCandidate),
         },
         paths: {
             data_dir: process.env.MERISTEM_PATHS_DATA_DIR ?? fileConfig.paths?.data_dir ?? '/var/lib/meristem',

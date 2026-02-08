@@ -5,6 +5,7 @@ const originalCoreAddress = process.env.MERISTEM_CORE_ADDRESS;
 const originalCoreUrl = process.env.MERISTEM_CORE_URL;
 const originalMaxRetries = process.env.MERISTEM_GIG_MAX_RETRIES;
 const originalRetryBackoff = process.env.MERISTEM_GIG_RETRY_BACKOFF_MS;
+const originalPersona = process.env.MERISTEM_IDENTITY_PERSONA;
 
 const restoreEnv = (): void => {
   if (originalCoreAddress === undefined) {
@@ -29,6 +30,12 @@ const restoreEnv = (): void => {
     delete process.env.MERISTEM_GIG_RETRY_BACKOFF_MS;
   } else {
     process.env.MERISTEM_GIG_RETRY_BACKOFF_MS = originalRetryBackoff;
+  }
+
+  if (originalPersona === undefined) {
+    delete process.env.MERISTEM_IDENTITY_PERSONA;
+  } else {
+    process.env.MERISTEM_IDENTITY_PERSONA = originalPersona;
   }
 };
 
@@ -57,4 +64,13 @@ test('loadConfig uses default gig retry policy when environment is missing', ():
 
   expect(config.gig.max_retries).toBe(3);
   expect(config.gig.retry_backoff_ms).toEqual([1000, 5000, 15000]);
+});
+
+test('loadConfig falls back to AGENT when persona env is invalid', (): void => {
+  process.env.MERISTEM_CORE_ADDRESS = 'http://localhost:3000';
+  process.env.MERISTEM_IDENTITY_PERSONA = 'WORKER';
+
+  const config = loadConfig();
+
+  expect(config.identity.persona).toBe('AGENT');
 });

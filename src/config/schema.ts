@@ -1,10 +1,12 @@
+import type { NodePersona } from '@insnh-gd/meristem-shared';
+
 export interface ClientConfig {
     core: {
         address: string;
     };
     identity: {
         auth_key?: string;
-        persona: 'AGENT' | 'GIG';
+        persona: NodePersona;
     };
     paths: {
         data_dir: string;
