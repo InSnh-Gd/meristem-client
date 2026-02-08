@@ -1,5 +1,6 @@
 import pino from 'pino';
 import type { NatsConnection } from 'nats';
+import type { LogEnvelope, LogLevel } from 'meristem-shared';
 
 type TraceContextFields = {
   traceId: string;
@@ -16,18 +17,6 @@ type TraceContextInput = {
 };
 
 export type TraceContext = Readonly<TraceContextFields>;
-
-type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
-
-type LogEnvelope = Readonly<{
-  readonly ts: number;
-  readonly level: LogLevel;
-  readonly node_id: string;
-  readonly source: string;
-  readonly trace_id: string;
-  readonly content: string;
-  readonly meta: Record<string, unknown>;
-}>;
 
 export type NatsTransportOptions = Readonly<{
   readonly bufferMaxBytes?: number;
