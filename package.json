@@ -12,6 +12,7 @@
     "e2e:smoke": "MERISTEM_CORE_URL=http://localhost:3000 MERISTEM_NATS_URL=nats://localhost:4222 bun run src/index.ts"
   },
   "dependencies": {
+    "@elysiajs/eden": "^1.4.2",
     "@insnh-gd/meristem-shared": "file:../meristem-shared",
     "@iarna/toml": "^2.2.5",
     "pino": "^10.3.0",

@@ -8,6 +8,7 @@
  * 4. MVP: Auto-approved (no admin approval wait)
  */
 
+import type { WsTopic } from '@insnh-gd/meristem-shared';
 import {
   getHwid,
   getHostname,
@@ -21,6 +22,7 @@ import {
   type NodeCredentials,
 } from './services/identity.js';
 import { createCoreHttpClient } from './services/core-http.js';
+import { createCoreEdenWsClient } from './services/core-eden-ws.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
 import packageJson from '../package.json';
@@ -31,6 +33,7 @@ const CLIENT_VERSION =
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
 const coreHttpClient = createCoreHttpClient(CORE_URL);
+const ENABLE_EDEN_WS = process.env.ENABLE_EDEN_WS === 'true';
 
 /**
  * Join result interface
@@ -54,6 +57,57 @@ type GracefulShutdownOptions = Readonly<{
   closeConnection?: () => Promise<void>;
   onExit?: (code?: number) => void;
 }>;
+
+const resolveNodeStatusTopic = (nodeId: string): WsTopic => `node.${nodeId}.status` as WsTopic;
+
+const resolveEdenWsToken = async (): Promise<string | undefined> => {
+  const envToken = process.env.MERISTEM_CORE_WS_TOKEN;
+  if (typeof envToken === 'string' && envToken.trim().length > 0) {
+    return envToken;
+  }
+  const credentials = await loadCredentials();
+  if (typeof credentials?.auth_key === 'string' && credentials.auth_key.trim().length > 0) {
+    return credentials.auth_key;
+  }
+  return undefined;
+};
+
+const createEdenWsService = async (nodeId: string, logger: Logger): Promise<ServiceHandle | null> => {
+  if (!ENABLE_EDEN_WS) {
+    return null;
+  }
+
+  const token = await resolveEdenWsToken();
+  if (!token) {
+    logger.warn('[EdenWS] ENABLE_EDEN_WS=true but no ws token found, skip subscribe');
+    return null;
+  }
+
+  const topic = resolveNodeStatusTopic(nodeId);
+  const wsClient = createCoreEdenWsClient(CORE_URL);
+
+  try {
+    const session = await wsClient.subscribeTopic({
+      token,
+      topic,
+      onPush: (message) => {
+        logger.info('[EdenWS] push received', {
+          topic: message.topic,
+        });
+      },
+    });
+    logger.info('[EdenWS] subscribed', { topic });
+    return {
+      stop: async () => {
+        session.close();
+      },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.warn('[EdenWS] subscribe failed', { error: reason });
+    return null;
+  }
+};
 
 export function createGracefulShutdown(options: GracefulShutdownOptions): (exitCode?: number) => Promise<void> {
   let isShuttingDown = false;
@@ -221,6 +275,10 @@ async function main(): Promise<void> {
     await natsManager.connect();
     await heartbeatService.start();
     await pulseService.start();
+    const edenWsService = await createEdenWsService(nodeId, logger);
+    if (edenWsService) {
+      services.push(edenWsService);
+    }
 
     // Keep process alive
     logger.info('[Client] Running (Ctrl+C to exit)');
