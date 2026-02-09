@@ -13,7 +13,12 @@ import { readFileSync } from 'fs';
 import { networkInterfaces, hostname } from 'os';
 import { writeFile, readFile, access } from 'fs/promises';
 import { join } from 'path';
-import type { NodePersona } from '@insnh-gd/meristem-shared';
+import type {
+  HardwareProfile as SharedHardwareProfile,
+  JoinRequestPayload,
+  JoinResponsePayload,
+  NodePersona,
+} from '@insnh-gd/meristem-shared';
 import { resolveNodePersona } from '../utils/persona.js';
 
 // Path for persisting node credentials
@@ -35,59 +40,9 @@ export interface NodeCredentials {
   core_ip?: string;
 }
 
-/**
- * Join request payload
- */
-export interface JoinRequest {
-  hwid: string;
-  hostname: string;
-  persona: NodePersona;
-  hardware_profile?: HardwareProfile;
-  hardware_profile_hash?: string;
-}
-
-/**
- * Hardware profile interface
- */
-export interface HardwareProfile {
-  cpu?: {
-    model: string;
-    cores: number;
-    threads?: number;
-  };
-  memory?: {
-    total: number;
-    available?: number;
-    type?: string;
-  };
-  storage?: Array<{
-    type?: string;
-    size?: number;
-    total?: number;
-    available?: number;
-  }>;
-  gpu?: Array<{
-    model: string;
-    vram?: number;
-    memory?: number;
-  }>;
-  os?: string;
-  arch?: 'x86_64' | 'arm64' | 'unknown';
-}
-
-/**
- * Join response from Core
- */
-export interface JoinResponse {
-  success: boolean;
-  data?: {
-    node_id: string;
-    core_ip: string;
-    status: 'new' | 'existing' | 'pending_approval';
-    message: string;
-  };
-  error?: string;
-}
+export type HardwareProfile = SharedHardwareProfile;
+export type JoinRequest = JoinRequestPayload;
+export type JoinResponse = JoinResponsePayload;
 
 /**
  * Read system UUID from DMI (Linux only)

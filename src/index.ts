@@ -20,6 +20,7 @@ import {
   type JoinResponse,
   type NodeCredentials,
 } from './services/identity.js';
+import { createCoreHttpClient } from './services/core-http.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
 import packageJson from '../package.json';
@@ -29,7 +30,7 @@ const CLIENT_VERSION =
 
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
-const JOIN_ENDPOINT = `${CORE_URL}/api/v1/join`;
+const coreHttpClient = createCoreHttpClient(CORE_URL);
 
 /**
  * Join result interface
@@ -130,47 +131,35 @@ async function performJoin(): Promise<JoinResult> {
     console.log(`[Join] Persona: ${joinRequest.persona}, Hostname: ${joinRequest.hostname}`);
 
     // Send join request
-    const response = await fetch(JOIN_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(joinRequest),
-    });
+    const result: JoinResponse = await coreHttpClient.join(joinRequest);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json() as JoinResponse;
-
-    if (!result.success || !result.data) {
+    if (!result.success) {
       throw new Error(result.error || 'Join request failed');
     }
+    const joinData = result.data;
 
     // Persist credentials
     const credentials: NodeCredentials = {
-      node_id: result.data.node_id,
+      node_id: joinData.node_id,
       hwid,
-      core_ip: result.data.core_ip,
+      core_ip: joinData.core_ip,
       registered_at: new Date().toISOString(),
     };
 
     await saveCredentials(credentials);
 
     const isJoined = true;
-    const logger = createClientLogger(isJoined, result.data.node_id);
-    logger.info(`[Join] Success! Node ID: ${result.data.node_id}`);
-    logger.info(`[Join] Core IP: ${result.data.core_ip}`);
-    logger.info(`[Join] Status: ${result.data.status}`);
+    const logger = createClientLogger(isJoined, joinData.node_id);
+    logger.info(`[Join] Success! Node ID: ${joinData.node_id}`);
+    logger.info(`[Join] Core IP: ${joinData.core_ip}`);
+    logger.info(`[Join] Status: ${joinData.status}`);
 
     return {
       success: true,
-      nodeId: result.data.node_id,
-      coreIp: result.data.core_ip,
-      status: result.data.status,
-      message: result.data.message,
+      nodeId: joinData.node_id,
+      coreIp: joinData.core_ip,
+      status: joinData.status,
+      message: joinData.message,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
