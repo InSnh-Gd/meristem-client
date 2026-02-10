@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@elysiajs/eden": "^1.4.2",
-    "@insnh-gd/meristem-shared": "file:../meristem-shared",
+    "@insnh-gd/meristem-shared": "npm:@jsr/insnh-gd__meristem-shared@^0.1.0",
     "@iarna/toml": "^2.2.5",
     "pino": "^10.3.0",
     "nats": "^2.29.3"
