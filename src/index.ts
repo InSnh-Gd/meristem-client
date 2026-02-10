@@ -8,6 +8,7 @@
  * 4. MVP: Auto-approved (no admin approval wait)
  */
 
+import type { WsTopic } from '@insnh-gd/meristem-shared';
 import {
   getHwid,
   getHostname,
@@ -20,6 +21,8 @@ import {
   type JoinResponse,
   type NodeCredentials,
 } from './services/identity.js';
+import { createCoreHttpClient } from './services/core-http.js';
+import { createCoreEdenWsClient } from './services/core-eden-ws.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
 import packageJson from '../package.json';
@@ -29,7 +32,8 @@ const CLIENT_VERSION =
 
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
-const JOIN_ENDPOINT = `${CORE_URL}/api/v1/join`;
+const coreHttpClient = createCoreHttpClient(CORE_URL);
+const ENABLE_EDEN_WS = process.env.ENABLE_EDEN_WS === 'true';
 
 /**
  * Join result interface
@@ -53,6 +57,57 @@ type GracefulShutdownOptions = Readonly<{
   closeConnection?: () => Promise<void>;
   onExit?: (code?: number) => void;
 }>;
+
+const resolveNodeStatusTopic = (nodeId: string): WsTopic => `node.${nodeId}.status` as WsTopic;
+
+const resolveEdenWsToken = async (): Promise<string | undefined> => {
+  const envToken = process.env.MERISTEM_CORE_WS_TOKEN;
+  if (typeof envToken === 'string' && envToken.trim().length > 0) {
+    return envToken;
+  }
+  const credentials = await loadCredentials();
+  if (typeof credentials?.auth_key === 'string' && credentials.auth_key.trim().length > 0) {
+    return credentials.auth_key;
+  }
+  return undefined;
+};
+
+const createEdenWsService = async (nodeId: string, logger: Logger): Promise<ServiceHandle | null> => {
+  if (!ENABLE_EDEN_WS) {
+    return null;
+  }
+
+  const token = await resolveEdenWsToken();
+  if (!token) {
+    logger.warn('[EdenWS] ENABLE_EDEN_WS=true but no ws token found, skip subscribe');
+    return null;
+  }
+
+  const topic = resolveNodeStatusTopic(nodeId);
+  const wsClient = createCoreEdenWsClient(CORE_URL);
+
+  try {
+    const session = await wsClient.subscribeTopic({
+      token,
+      topic,
+      onPush: (message) => {
+        logger.info('[EdenWS] push received', {
+          topic: message.topic,
+        });
+      },
+    });
+    logger.info('[EdenWS] subscribed', { topic });
+    return {
+      stop: async () => {
+        session.close();
+      },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.warn('[EdenWS] subscribe failed', { error: reason });
+    return null;
+  }
+};
 
 export function createGracefulShutdown(options: GracefulShutdownOptions): (exitCode?: number) => Promise<void> {
   let isShuttingDown = false;
@@ -130,47 +185,35 @@ async function performJoin(): Promise<JoinResult> {
     console.log(`[Join] Persona: ${joinRequest.persona}, Hostname: ${joinRequest.hostname}`);
 
     // Send join request
-    const response = await fetch(JOIN_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(joinRequest),
-    });
+    const result: JoinResponse = await coreHttpClient.join(joinRequest);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json() as JoinResponse;
-
-    if (!result.success || !result.data) {
+    if (!result.success) {
       throw new Error(result.error || 'Join request failed');
     }
+    const joinData = result.data;
 
     // Persist credentials
     const credentials: NodeCredentials = {
-      node_id: result.data.node_id,
+      node_id: joinData.node_id,
       hwid,
-      core_ip: result.data.core_ip,
+      core_ip: joinData.core_ip,
       registered_at: new Date().toISOString(),
     };
 
     await saveCredentials(credentials);
 
     const isJoined = true;
-    const logger = createClientLogger(isJoined, result.data.node_id);
-    logger.info(`[Join] Success! Node ID: ${result.data.node_id}`);
-    logger.info(`[Join] Core IP: ${result.data.core_ip}`);
-    logger.info(`[Join] Status: ${result.data.status}`);
+    const logger = createClientLogger(isJoined, joinData.node_id);
+    logger.info(`[Join] Success! Node ID: ${joinData.node_id}`);
+    logger.info(`[Join] Core IP: ${joinData.core_ip}`);
+    logger.info(`[Join] Status: ${joinData.status}`);
 
     return {
       success: true,
-      nodeId: result.data.node_id,
-      coreIp: result.data.core_ip,
-      status: result.data.status,
-      message: result.data.message,
+      nodeId: joinData.node_id,
+      coreIp: joinData.core_ip,
+      status: joinData.status,
+      message: joinData.message,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -232,6 +275,10 @@ async function main(): Promise<void> {
     await natsManager.connect();
     await heartbeatService.start();
     await pulseService.start();
+    const edenWsService = await createEdenWsService(nodeId, logger);
+    if (edenWsService) {
+      services.push(edenWsService);
+    }
 
     // Keep process alive
     logger.info('[Client] Running (Ctrl+C to exit)');
