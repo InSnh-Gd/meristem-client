@@ -1,7 +1,13 @@
-import { ResultInbox, type ResultInboxOptions, type ResultRecord } from '../services/result-inbox.js';
+import {
+  ResultInbox,
+  type ResultInboxOptions,
+  type ResultRecord,
+  type ResultSendOutcome,
+} from '../services/result-inbox.js';
 
 export type ResultDeliveryRecord = ResultRecord;
 export type ResultDeliveryOptions = ResultInboxOptions;
+export type ResultDeliverySendOutcome = ResultSendOutcome;
 
 export interface ResultDelivery {
   start(): Promise<void>;
