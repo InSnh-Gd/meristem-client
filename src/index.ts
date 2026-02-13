@@ -23,6 +23,7 @@ import {
 } from './services/identity.js';
 import { createCoreHttpClient } from './services/core-http.js';
 import { createCoreEdenWsClient } from './services/core-eden-ws.js';
+import { waitForNatsWithRetry } from './services/ota-preflight.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
 import packageJson from '../package.json';
@@ -32,6 +33,7 @@ const CLIENT_VERSION =
 
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
+const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
 const coreHttpClient = createCoreHttpClient(CORE_URL);
 const ENABLE_EDEN_WS = process.env.ENABLE_EDEN_WS === 'true';
 
@@ -271,6 +273,14 @@ async function main(): Promise<void> {
         process.exit(code);
       },
     });
+
+    const natsReady = await waitForNatsWithRetry(NATS_URL);
+    if (!natsReady) {
+      logger.error('[Client] OTA preflight failed: NATS not reachable after retries', {
+        natsUrl: NATS_URL,
+      });
+      process.exit(1);
+    }
 
     await natsManager.connect();
     await heartbeatService.start();
