@@ -342,7 +342,7 @@ async function main(): Promise<void> {
 
 // Run if executed directly
 if (import.meta.main) {
-  void main();
+  await main();
 }
 
 // Export for programmatic use
