@@ -41,7 +41,10 @@ export class PulseService {
 
     // Send pulse every 30s
     this.checkInterval = setInterval(() => {
-      this.sendPulse();
+      void this.sendPulse().catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        logger.warn('Pulse send loop failed', { error: reason });
+      });
     }, 30000); // 30s
 
     // Graceful shutdown
@@ -70,36 +73,47 @@ export class PulseService {
    * Send pulse message
    */
   private async sendPulse(): Promise<void> {
-    const nc = natsManager.getConnection();
-    if (!nc) {
-      logger.error('NATS connection not available');
-      return;
-    }
+    try {
+      let nc = natsManager.getConnection();
+      if (!nc) {
+        nc = await natsManager.connect();
+      }
 
-    const node_id = process.env.MERISTEM_NODE_ID || 'unknown';
-    const ts = Date.now();
+      const node_id = process.env.MERISTEM_NODE_ID || 'unknown';
+      const ts = Date.now();
 
-    // Collect CPU and RAM usage
-    const cpuUsage = process.cpuUsage();
-    const ramUsage = process.memoryUsage();
+      // Collect CPU and RAM usage
+      const cpuUsage = process.cpuUsage();
+      const ramUsage = process.memoryUsage();
 
-    const cpuTotal = cpuUsage.user + cpuUsage.system;
-    const cpuLoad = cpuTotal > 0 ? cpuUsage.user / cpuTotal : 0;
+      const cpuTotal = cpuUsage.user + cpuUsage.system;
+      const cpuLoad = cpuTotal > 0 ? cpuUsage.user / cpuTotal : 0;
 
-    const message: PulseMessage = {
-      node_id,
-      ts,
-      core: {
-        cpu_load: cpuLoad,
-        ram_usage: ramUsage.heapUsed / ramUsage.heapTotal,
-        net_io: {
-          in: 0,
-          out: 0,
+      const message: PulseMessage = {
+        node_id,
+        ts,
+        core: {
+          cpu_load: cpuLoad,
+          ram_usage: ramUsage.heapUsed / ramUsage.heapTotal,
+          net_io: {
+            in: 0,
+            out: 0,
+          },
         },
-      },
-    };
+      };
 
-    nc.publish('meristem.v1.sys.pulse', new TextEncoder().encode(JSON.stringify(message)));
-    logger.debug('Pulse sent', { node_id, cpu_load: message.core.cpu_load });
+      try {
+        nc.publish('meristem.v1.sys.pulse', new TextEncoder().encode(JSON.stringify(message)));
+      } catch {
+        await natsManager.close();
+        const reconnected = await natsManager.connect();
+        reconnected.publish('meristem.v1.sys.pulse', new TextEncoder().encode(JSON.stringify(message)));
+      }
+
+      logger.debug('Pulse sent', { node_id, cpu_load: message.core.cpu_load });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.error('Pulse publish failed', { error: reason });
+    }
   }
 }

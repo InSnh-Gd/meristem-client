@@ -35,7 +35,10 @@ export class HeartbeatService {
 
     // Send heartbeat every 15s
     this.checkInterval = setInterval(() => {
-      this.sendHeartbeat();
+      void this.sendHeartbeat().catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        logger.warn('Heartbeat send loop failed', { error: reason });
+      });
     }, 15000); // 15s
 
     // Graceful shutdown
@@ -64,24 +67,35 @@ export class HeartbeatService {
    * Send heartbeat message
    */
   private async sendHeartbeat(): Promise<void> {
-    const nc = natsManager.getConnection();
-    if (!nc) {
-      logger.error('NATS connection not available');
-      return;
+    try {
+      let nc = natsManager.getConnection();
+      if (!nc) {
+        nc = await natsManager.connect();
+      }
+
+      const node_id = process.env.MERISTEM_NODE_ID || 'unknown';
+      const ts = Date.now();
+      const v = 1;
+
+      const message: NatsHeartbeatMessage = {
+        node_id,
+        ts,
+        v,
+        claimed_ip: process.env.MERISTEM_CLAIMED_IP || '',
+      };
+
+      try {
+        nc.publish('meristem.v1.hb.' + node_id, new TextEncoder().encode(JSON.stringify(message)));
+      } catch {
+        await natsManager.close();
+        const reconnected = await natsManager.connect();
+        reconnected.publish('meristem.v1.hb.' + node_id, new TextEncoder().encode(JSON.stringify(message)));
+      }
+
+      logger.debug('Heartbeat sent', { node_id, ts });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.error('Heartbeat publish failed', { error: reason });
     }
-
-    const node_id = process.env.MERISTEM_NODE_ID || 'unknown';
-    const ts = Date.now();
-    const v = 1;
-
-    const message: NatsHeartbeatMessage = {
-      node_id,
-      ts,
-      v,
-      claimed_ip: process.env.MERISTEM_CLAIMED_IP || '',
-    };
-
-    nc.publish('meristem.v1.hb.' + node_id, new TextEncoder().encode(JSON.stringify(message)));
-    logger.debug('Heartbeat sent', { node_id, ts });
   }
 }
