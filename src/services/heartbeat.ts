@@ -2,6 +2,17 @@ import { natsManager } from '../nats/connection';
 import { createClientLogger } from '../utils/logger';
 
 const logger = createClientLogger(true, process.env.MERISTEM_NODE_ID, () => natsManager.connect());
+const reportWarn = (message: string, meta?: Record<string, unknown>): void => {
+  const suffix = typeof meta?.error === 'string' ? ` (${meta.error})` : '';
+  console.warn(`[Heartbeat] ${message}${suffix}`);
+  logger.warn(message, meta);
+};
+
+const reportError = (message: string, meta?: Record<string, unknown>): void => {
+  const suffix = typeof meta?.error === 'string' ? ` (${meta.error})` : '';
+  console.error(`[Heartbeat] ${message}${suffix}`);
+  logger.error(message, meta);
+};
 
 /**
  * NATS Heartbeat Message Format (EVENT_BUS_SPEC.md §6.2)
@@ -26,7 +37,7 @@ export class HeartbeatService {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Heartbeat service already running');
+      reportWarn('Heartbeat service already running');
       return;
     }
 
@@ -37,7 +48,7 @@ export class HeartbeatService {
     this.checkInterval = setInterval(() => {
       void this.sendHeartbeat().catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : String(error);
-        logger.warn('Heartbeat send loop failed', { error: reason });
+        reportWarn('Heartbeat send loop failed', { error: reason });
       });
     }, 15000); // 15s
 
@@ -95,7 +106,7 @@ export class HeartbeatService {
       logger.debug('Heartbeat sent', { node_id, ts });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      logger.error('Heartbeat publish failed', { error: reason });
+      reportError('Heartbeat publish failed', { error: reason });
     }
   }
 }

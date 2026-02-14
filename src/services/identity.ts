@@ -11,7 +11,7 @@
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { networkInterfaces, hostname } from 'os';
-import { writeFile, readFile, access } from 'fs/promises';
+import { writeFile, readFile, access, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type {
   HardwareProfile as SharedHardwareProfile,
@@ -22,12 +22,14 @@ import type {
 import { resolveNodePersona } from '../utils/persona.js';
 
 // Path for persisting node credentials
-const CREDENTIALS_PATH = process.env.MERISTEM_CREDENTIALS_PATH || 
-  join(process.cwd(), '.meristem', 'credentials.json');
+const resolveCredentialsPath = (): string =>
+  process.env.MERISTEM_CREDENTIALS_PATH
+  ?? join(process.cwd(), '.meristem', 'credentials.json');
 
 // Path for node ID override configuration
-const OVERRIDE_PATH = process.env.MERISTEM_CONFIG_PATH || 
-  join(process.cwd(), '.meristem', 'config.json');
+const resolveOverridePath = (): string =>
+  process.env.MERISTEM_CONFIG_PATH
+  ?? join(process.cwd(), '.meristem', 'config.json');
 
 /**
  * Node credentials interface
@@ -145,9 +147,10 @@ export function generateHwid(): string {
  * Check if node_id_override is configured
  */
 async function getOverrideNodeId(): Promise<string | null> {
+  const overridePath = resolveOverridePath();
   try {
-    await access(OVERRIDE_PATH);
-    const config = JSON.parse(await readFile(OVERRIDE_PATH, 'utf-8'));
+    await access(overridePath);
+    const config = JSON.parse(await readFile(overridePath, 'utf-8'));
     return config.node_id_override || null;
   } catch {
     return null;
@@ -158,9 +161,10 @@ async function getOverrideNodeId(): Promise<string | null> {
  * Load persisted credentials
  */
 export async function loadCredentials(): Promise<NodeCredentials | null> {
+  const credentialsPath = resolveCredentialsPath();
   try {
-    await access(CREDENTIALS_PATH);
-    const data = await readFile(CREDENTIALS_PATH, 'utf-8');
+    await access(credentialsPath);
+    const data = await readFile(credentialsPath, 'utf-8');
     return JSON.parse(data) as NodeCredentials;
   } catch {
     return null;
@@ -171,15 +175,12 @@ export async function loadCredentials(): Promise<NodeCredentials | null> {
  * Save credentials to disk
  */
 export async function saveCredentials(credentials: NodeCredentials): Promise<void> {
-  const dir = join(CREDENTIALS_PATH, '..');
-  try {
-    await access(dir);
-  } catch {
-    // Directory doesn't exist, will be created by writeFile with recursive
-  }
+  const credentialsPath = resolveCredentialsPath();
+  const dir = join(credentialsPath, '..');
+  await mkdir(dir, { recursive: true });
   
   await writeFile(
-    CREDENTIALS_PATH, 
+    credentialsPath,
     JSON.stringify(credentials, null, 2),
     { mode: 0o600 } // Restrictive permissions for credentials
   );
@@ -285,9 +286,10 @@ export const createHardwareProfileHash = (profile: HardwareProfile): string => {
  * Clear persisted credentials (for re-join scenarios)
  */
 export async function clearCredentials(): Promise<void> {
+  const credentialsPath = resolveCredentialsPath();
   try {
-    await access(CREDENTIALS_PATH);
-    await writeFile(CREDENTIALS_PATH, '', { mode: 0o600 });
+    await access(credentialsPath);
+    await writeFile(credentialsPath, '', { mode: 0o600 });
   } catch {
     // File doesn't exist, nothing to clear
   }

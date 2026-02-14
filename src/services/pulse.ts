@@ -2,6 +2,17 @@ import { natsManager } from '../nats/connection';
 import { createClientLogger } from '../utils/logger';
 
 const logger = createClientLogger(true, process.env.MERISTEM_NODE_ID, () => natsManager.connect());
+const reportWarn = (message: string, meta?: Record<string, unknown>): void => {
+  const suffix = typeof meta?.error === 'string' ? ` (${meta.error})` : '';
+  console.warn(`[Pulse] ${message}${suffix}`);
+  logger.warn(message, meta);
+};
+
+const reportError = (message: string, meta?: Record<string, unknown>): void => {
+  const suffix = typeof meta?.error === 'string' ? ` (${meta.error})` : '';
+  console.error(`[Pulse] ${message}${suffix}`);
+  logger.error(message, meta);
+};
 
 /**
  * Pulse Message Format (HARDWARE_PROTOCOL.md §3.2)
@@ -32,7 +43,7 @@ export class PulseService {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Pulse service already running');
+      reportWarn('Pulse service already running');
       return;
     }
 
@@ -43,7 +54,7 @@ export class PulseService {
     this.checkInterval = setInterval(() => {
       void this.sendPulse().catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : String(error);
-        logger.warn('Pulse send loop failed', { error: reason });
+        reportWarn('Pulse send loop failed', { error: reason });
       });
     }, 30000); // 30s
 
@@ -113,7 +124,7 @@ export class PulseService {
       logger.debug('Pulse sent', { node_id, cpu_load: message.core.cpu_load });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      logger.error('Pulse publish failed', { error: reason });
+      reportError('Pulse publish failed', { error: reason });
     }
   }
 }

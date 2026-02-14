@@ -88,6 +88,7 @@ const createEdenWsService = async (nodeId: string, logger: Logger): Promise<Serv
 
   const token = await resolveEdenWsToken();
   if (!token) {
+    console.warn('[EdenWS] ENABLE_EDEN_WS=true but no ws token found, skip subscribe');
     logger.warn('[EdenWS] ENABLE_EDEN_WS=true but no ws token found, skip subscribe');
     return null;
   }
@@ -113,6 +114,7 @@ const createEdenWsService = async (nodeId: string, logger: Logger): Promise<Serv
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[EdenWS] subscribe failed: ${reason}`);
     logger.warn('[EdenWS] subscribe failed', { error: reason });
     return null;
   }
@@ -144,6 +146,7 @@ export function createGracefulShutdown(options: GracefulShutdownOptions): (exitC
     for (const outcome of results) {
       if (outcome.status === 'rejected') {
         const reason = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        console.error(`[Client] Shutdown task failed: ${reason}`);
         options.logger?.warn('[Client] Shutdown task failed', { error: reason });
       }
     }
@@ -269,7 +272,7 @@ async function main(): Promise<void> {
     const joinResult = await performJoin();
 
     if (!joinResult.success) {
-      console.error('[Client] Failed to join cluster');
+      console.error(`[Client] Failed to join cluster: ${joinResult.error ?? 'unknown error'}`);
       process.exit(1);
     }
 

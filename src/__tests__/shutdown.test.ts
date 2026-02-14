@@ -14,8 +14,16 @@ describe('createGracefulShutdown', () => {
   it('stops services and closes connection once', async () => {
     const order: string[] = [];
     const services = [
-      { stop: async () => order.push('heartbeat') },
-      { stop: async () => order.push('pulse') },
+      {
+        stop: async () => {
+          order.push('heartbeat');
+        },
+      },
+      {
+        stop: async () => {
+          order.push('pulse');
+        },
+      },
     ];
 
     let closeCalls = 0;
@@ -41,6 +49,15 @@ describe('createGracefulShutdown', () => {
   });
 
   it('resolves even when a task rejects', async () => {
+    const originalConsoleError = console.error;
+    const stderrMessages: string[] = [];
+    console.error = ((...args: unknown[]): void => {
+      const line = args
+        .map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg)))
+        .join(' ');
+      stderrMessages.push(line);
+    }) as typeof console.error;
+
     const shutdown = createGracefulShutdown({
       logger: noopLogger,
       services: [
@@ -55,6 +72,11 @@ describe('createGracefulShutdown', () => {
       },
     });
 
-    await expect(shutdown()).resolves.toBeUndefined();
+    try {
+      await shutdown();
+      expect(stderrMessages.some((line) => line.includes('Shutdown task failed'))).toBe(true);
+    } finally {
+      console.error = originalConsoleError;
+    }
   });
 });
