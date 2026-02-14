@@ -35,7 +35,7 @@ const CLIENT_VERSION =
 
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
-const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
+const NATS_URL = process.env.MERISTEM_NATS_URL || process.env.NATS_URL || 'nats://localhost:4222';
 const ADDRESS_FAMILY_PREFERENCE =
   process.env.MERISTEM_ADDRESS_FAMILY_PREFERENCE === 'ipv6-first' ||
   process.env.MERISTEM_ADDRESS_FAMILY_PREFERENCE === 'ipv4-first'
