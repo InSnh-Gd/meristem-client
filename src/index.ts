@@ -340,8 +340,14 @@ async function main(): Promise<void> {
   }
 }
 
-// Run if executed directly
-if (import.meta.main) {
+const isDirectEntrypoint =
+  import.meta.main
+  || process.argv[1]?.endsWith('/src/index.ts')
+  || process.argv[1]?.endsWith('\\src\\index.ts')
+  || process.argv[1]?.endsWith('/dist/index.js')
+  || process.argv[1]?.endsWith('\\dist\\index.js');
+
+if (isDirectEntrypoint) {
   await main();
 }
 
