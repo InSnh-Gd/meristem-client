@@ -25,7 +25,7 @@ import { createCoreHttpClient } from './services/core-http.js';
 import { createCoreEdenWsClient } from './services/core-eden-ws.js';
 import { parseJoinNetworkBootstrap } from './services/network/contract.js';
 import { createTunnelPlanner } from './services/network/tunnel-planner.js';
-import { waitForNatsWithRetry } from './services/ota-preflight.js';
+import { waitForNatsWithRetryDetailed } from './services/ota-preflight.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
 import packageJson from '../package.json';
@@ -299,11 +299,21 @@ async function main(): Promise<void> {
       },
     });
 
-    const natsReady = await waitForNatsWithRetry(NATS_URL);
-    if (!natsReady) {
-      logger.error('[Client] OTA preflight failed: NATS not reachable after retries', {
+    const natsPreflight = await waitForNatsWithRetryDetailed(NATS_URL);
+    if (!natsPreflight.connected) {
+      const failureMeta = {
         natsUrl: NATS_URL,
-      });
+        attempts: natsPreflight.attempts,
+        error: natsPreflight.lastError ?? 'unknown',
+      };
+      console.error(
+        `[Client] OTA preflight failed: NATS not reachable after ${failureMeta.attempts} attempts (${failureMeta.error})`,
+      );
+      logger.error('[Client] OTA preflight failed: NATS not reachable after retries', failureMeta);
+      if (shutdownHandler) {
+        await shutdownHandler(1);
+        return;
+      }
       process.exit(1);
     }
 
@@ -327,10 +337,9 @@ async function main(): Promise<void> {
     process.on('SIGTERM', handleSignal);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[Client] Fatal error: ${errorMessage}`);
     if (isJoined && logger) {
       logger.error('[Client] Fatal error:', { error: errorMessage });
-    } else {
-      console.error('[Client] Fatal error:', error);
     }
     if (shutdownHandler) {
       await shutdownHandler(1);

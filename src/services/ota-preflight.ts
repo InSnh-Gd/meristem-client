@@ -3,6 +3,17 @@ import { connect, type NatsConnection } from 'nats';
 const DEFAULT_NATS_TIMEOUT_MS = 5000;
 const DEFAULT_BASE_DELAY_MS = 1000;
 
+export type NatsConnectivityCheckResult = Readonly<{
+  connected: boolean;
+  lastError?: string;
+}>;
+
+export type NatsRetryResult = Readonly<{
+  connected: boolean;
+  attempts: number;
+  lastError?: string;
+}>;
+
 const sleep = (delayMs: number): Promise<void> => {
   return new Promise((resolve) => {
     setTimeout(resolve, delayMs);
@@ -25,7 +36,12 @@ const normalizeBaseDelay = (baseDelayMs: number): number => {
   return Math.floor(baseDelayMs);
 };
 
-export async function checkNatsConnectivity(natsUrl: string): Promise<boolean> {
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+export async function checkNatsConnectivityDetailed(
+  natsUrl: string,
+): Promise<NatsConnectivityCheckResult> {
   let connection: NatsConnection | null = null;
 
   try {
@@ -33,9 +49,12 @@ export async function checkNatsConnectivity(natsUrl: string): Promise<boolean> {
       servers: natsUrl,
       timeout: DEFAULT_NATS_TIMEOUT_MS,
     });
-    return true;
-  } catch {
-    return false;
+    return { connected: true };
+  } catch (error) {
+    return {
+      connected: false,
+      lastError: formatError(error),
+    };
   } finally {
     if (connection) {
       await connection.close();
@@ -43,23 +62,33 @@ export async function checkNatsConnectivity(natsUrl: string): Promise<boolean> {
   }
 }
 
-export async function waitForNatsWithRetry(
+export async function checkNatsConnectivity(natsUrl: string): Promise<boolean> {
+  const result = await checkNatsConnectivityDetailed(natsUrl);
+  return result.connected;
+}
+
+export async function waitForNatsWithRetryDetailed(
   natsUrl: string,
   maxRetries = 5,
   baseDelayMs = DEFAULT_BASE_DELAY_MS,
-): Promise<boolean> {
+): Promise<NatsRetryResult> {
   const retryCount = normalizeRetryCount(maxRetries);
   const initialDelayMs = normalizeBaseDelay(baseDelayMs);
+  let lastError: string | undefined;
 
   /**
    * 在 OTA 预检查阶段，先做一次即时连通性探测；若失败再进入指数退避。
    * 这样可在 NATS 已可用时快速放行，同时在短暂抖动时避免高频重试放大负载。
    */
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-    const isConnected = await checkNatsConnectivity(natsUrl);
-    if (isConnected) {
-      return true;
+    const connectivity = await checkNatsConnectivityDetailed(natsUrl);
+    if (connectivity.connected) {
+      return {
+        connected: true,
+        attempts: attempt + 1,
+      };
     }
+    lastError = connectivity.lastError;
 
     if (attempt === retryCount) {
       break;
@@ -73,5 +102,18 @@ export async function waitForNatsWithRetry(
     await sleep(delayMs);
   }
 
-  return false;
+  return {
+    connected: false,
+    attempts: retryCount + 1,
+    lastError,
+  };
+}
+
+export async function waitForNatsWithRetry(
+  natsUrl: string,
+  maxRetries = 5,
+  baseDelayMs = DEFAULT_BASE_DELAY_MS,
+): Promise<boolean> {
+  const result = await waitForNatsWithRetryDetailed(natsUrl, maxRetries, baseDelayMs);
+  return result.connected;
 }
