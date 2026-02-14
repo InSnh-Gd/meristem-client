@@ -23,6 +23,8 @@ import {
 } from './services/identity.js';
 import { createCoreHttpClient } from './services/core-http.js';
 import { createCoreEdenWsClient } from './services/core-eden-ws.js';
+import { parseJoinNetworkBootstrap } from './services/network/contract.js';
+import { createTunnelPlanner } from './services/network/tunnel-planner.js';
 import { waitForNatsWithRetry } from './services/ota-preflight.js';
 import { createClientLogger, type Logger } from './utils/logger.js';
 import { natsManager } from './nats/connection.js';
@@ -34,6 +36,11 @@ const CLIENT_VERSION =
 // Core endpoint configuration
 const CORE_URL = process.env.MERISTEM_CORE_URL || 'http://localhost:3000';
 const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
+const ADDRESS_FAMILY_PREFERENCE =
+  process.env.MERISTEM_ADDRESS_FAMILY_PREFERENCE === 'ipv6-first' ||
+  process.env.MERISTEM_ADDRESS_FAMILY_PREFERENCE === 'ipv4-first'
+    ? process.env.MERISTEM_ADDRESS_FAMILY_PREFERENCE
+    : 'dual-stack';
 const coreHttpClient = createCoreHttpClient(CORE_URL);
 const ENABLE_EDEN_WS = process.env.ENABLE_EDEN_WS === 'true';
 
@@ -193,12 +200,15 @@ async function performJoin(): Promise<JoinResult> {
       throw new Error(result.error || 'Join request failed');
     }
     const joinData = result.data;
+    const joinDataRecord = joinData as unknown as Record<string, unknown>;
+    const networkBootstrap = parseJoinNetworkBootstrap(joinDataRecord, joinData.core_ip);
 
     // Persist credentials
     const credentials: NodeCredentials = {
       node_id: joinData.node_id,
       hwid,
       core_ip: joinData.core_ip,
+      auth_key: networkBootstrap.authKey,
       registered_at: new Date().toISOString(),
     };
 
@@ -209,6 +219,21 @@ async function performJoin(): Promise<JoinResult> {
     logger.info(`[Join] Success! Node ID: ${joinData.node_id}`);
     logger.info(`[Join] Core IP: ${joinData.core_ip}`);
     logger.info(`[Join] Status: ${joinData.status}`);
+    if (networkBootstrap.mode === 'OVERLAY') {
+      const planner = createTunnelPlanner(ADDRESS_FAMILY_PREFERENCE);
+      const plan = planner.plan(networkBootstrap);
+      logger.info('[Join] Overlay network bootstrap resolved', {
+        network_provider: networkBootstrap.provider ?? 'unknown',
+        relay_regions: networkBootstrap.derpMap
+          ? Object.keys(networkBootstrap.derpMap.Regions).length
+          : 0,
+        has_auth_key:
+          typeof networkBootstrap.authKey === 'string' &&
+          networkBootstrap.authKey.length > 0,
+        planned_path: plan?.mode ?? 'UNRESOLVED',
+        planned_family: plan?.family ?? 'unknown',
+      });
+    }
 
     return {
       success: true,
